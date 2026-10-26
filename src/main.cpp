@@ -5,9 +5,14 @@
 #include <QDBusMessage>
 
 #include <cstdio>
+#include <malloc.h>
 
 int main(int argc, char *argv[])
 {
+    // A fixed threshold stops glibc from raising it after the first large free, which would otherwise
+    // leave freed screenshot buffers parked in per-thread arenas instead of returning them to the system.
+    mallopt(M_MMAP_THRESHOLD, 1 << 20);
+
     QApplication app(argc, argv);
     QApplication::setApplicationName(QStringLiteral("shotx"));
     QApplication::setApplicationDisplayName(QStringLiteral("ShotX"));
