@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=ShotX
+Comment=Fast region screenshots with an annotation editor
+Exec=@BIN@
+Icon=applets-screenshooter
+Categories=Utility;Graphics;
+X-KDE-DBUS-Restricted-Interfaces=org.kde.KWin.ScreenShot2
