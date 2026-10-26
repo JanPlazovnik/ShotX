@@ -8,6 +8,8 @@
 #include <QAction>
 #include <QApplication>
 #include <QClipboard>
+#include <QDBusConnection>
+#include <QDBusMessage>
 #include <QDateTime>
 #include <QDesktopServices>
 #include <QDir>
@@ -15,6 +17,15 @@
 #include <QSystemTrayIcon>
 #include <QThreadPool>
 #include <QUrl>
+
+#include <utility>
+
+namespace {
+
+const QString notificationsService = QStringLiteral("org.freedesktop.Notifications");
+const QString notificationsPath = QStringLiteral("/org/freedesktop/Notifications");
+
+}
 
 App::App(QObject *parent)
     : QObject(parent)
@@ -60,6 +71,14 @@ App::App(QObject *parent)
         }
     });
     m_tray->show();
+
+    QDBusConnection bus = QDBusConnection::sessionBus();
+    bus.connect(notificationsService, notificationsPath, notificationsService, QStringLiteral("ActivationToken"), this,
+                SLOT(notificationToken(uint, QString)));
+    bus.connect(notificationsService, notificationsPath, notificationsService, QStringLiteral("ActionInvoked"), this,
+                SLOT(notificationAction(uint, QString)));
+    bus.connect(notificationsService, notificationsPath, notificationsService, QStringLiteral("NotificationClosed"), this,
+                SLOT(notificationClosed(uint, uint)));
 }
 
 void App::Region()
@@ -176,7 +195,7 @@ void App::save(const QImage &image)
         QMetaObject::invokeMethod(this, [this, ok, path, notifySaved] {
             if (ok) {
                 if (notifySaved) {
-                    notify(QStringLiteral("Screenshot saved"), path);
+                    this->notifySaved(path);
                 }
             } else {
                 notify(QStringLiteral("Could not save screenshot"), path);
@@ -188,4 +207,45 @@ void App::save(const QImage &image)
 void App::notify(const QString &title, const QString &body)
 {
     m_tray->showMessage(title, body, QIcon::fromTheme(QStringLiteral("applets-screenshooter")), 3000);
+}
+
+// Sent directly instead of through the tray icon, which cannot attach actions to a notification.
+void App::notifySaved(const QString &path)
+{
+    QDBusMessage message = QDBusMessage::createMethodCall(notificationsService, notificationsPath, notificationsService, QStringLiteral("Notify"));
+    message << QStringLiteral("ShotX") << 0u << QStringLiteral("applets-screenshooter") << QStringLiteral("Screenshot saved") << path
+            << QStringList{QStringLiteral("default"), QStringLiteral("Show in folder"), QStringLiteral("show"), QStringLiteral("Show in folder")}
+            << QVariantMap() << 3000;
+    const QDBusMessage reply = QDBusConnection::sessionBus().call(message);
+    if (reply.type() == QDBusMessage::ReplyMessage) {
+        m_savedNotifications.insert(reply.arguments().value(0).toUInt(), path);
+    }
+}
+
+// Emitted just before ActionInvoked; lets the file manager take focus on Wayland.
+void App::notificationToken(uint id, const QString &token)
+{
+    if (m_savedNotifications.contains(id)) {
+        m_activationToken = token;
+    }
+}
+
+void App::notificationAction(uint id, const QString &action)
+{
+    const QString path = m_savedNotifications.value(id);
+    if (path.isEmpty() || (action != QStringLiteral("default") && action != QStringLiteral("show"))) {
+        return;
+    }
+    QDBusMessage message = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.FileManager1"),
+                                                          QStringLiteral("/org/freedesktop/FileManager1"),
+                                                          QStringLiteral("org.freedesktop.FileManager1"),
+                                                          QStringLiteral("ShowItems"));
+    message << QStringList{QUrl::fromLocalFile(path).toString()} << std::exchange(m_activationToken, QString());
+    QDBusConnection::sessionBus().send(message);
+}
+
+void App::notificationClosed(uint id, uint reason)
+{
+    Q_UNUSED(reason)
+    m_savedNotifications.remove(id);
 }

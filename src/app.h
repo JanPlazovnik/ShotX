@@ -2,6 +2,7 @@
 
 #include "overlay.h"
 
+#include <QHash>
 #include <QObject>
 #include <QPointer>
 
@@ -25,14 +26,22 @@ public Q_SLOTS:
     void TakeShortcuts();
     void Configure();
 
+private Q_SLOTS:
+    void notificationToken(uint id, const QString &token);
+    void notificationAction(uint id, const QString &action);
+    void notificationClosed(uint id, uint reason);
+
 private:
     void startRegion(Action releaseAction);
     void handle(const QImage &image, Action action);
     void save(const QImage &image);
     void notify(const QString &title, const QString &body);
+    void notifySaved(const QString &path);
 
     QSystemTrayIcon *m_tray;
     QList<QAction *> m_globalActions;
     QPointer<SettingsDialog> m_settings;
+    QHash<uint, QString> m_savedNotifications;
+    QString m_activationToken;
     bool m_selecting = false;
 };

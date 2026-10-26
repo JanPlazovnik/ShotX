@@ -28,6 +28,16 @@ sudo dnf install ./shotx-*.rpm        # Fedora
 rpm-ostree install ./shotx-*.rpm      # Fedora Atomic / Bazzite, then reboot
 ```
 
+To update, download the newer package from the latest release and install it the same way. On Fedora Atomic / Bazzite, system updates keep the installed version, so remove the old package first and reboot once:
+
+```sh
+rpm-ostree uninstall shotx
+rpm-ostree install ./shotx-*.rpm
+systemctl reboot
+```
+
+Settings and shortcuts are kept across updates.
+
 To publish a release, push a version tag; CI builds both packages and attaches them:
 
 ```sh
