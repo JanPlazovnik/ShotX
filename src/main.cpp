@@ -20,13 +20,14 @@ int main(int argc, char *argv[])
         {QStringLiteral("screen"), QStringLiteral("Screen")},
         {QStringLiteral("window"), QStringLiteral("Window")},
         {QStringLiteral("take-shortcuts"), QStringLiteral("TakeShortcuts")},
+        {QStringLiteral("settings"), QStringLiteral("Configure")},
     };
     const QStringList args = QApplication::arguments();
     QString method;
     if (args.size() > 1) {
         method = commands.value(args.at(1));
         if (method.isEmpty()) {
-            std::fprintf(stderr, "usage: shotx [region|region-edit|screen|window|take-shortcuts]\n");
+            std::fprintf(stderr, "usage: shotx [region|region-edit|screen|window|take-shortcuts|settings]\n");
             return 1;
         }
     }
@@ -34,9 +35,9 @@ int main(int argc, char *argv[])
     const QString service = QStringLiteral("local.shotx");
     QDBusConnection bus = QDBusConnection::sessionBus();
     if (!bus.registerService(service)) {
-        if (!method.isEmpty()) {
-            bus.call(QDBusMessage::createMethodCall(service, QStringLiteral("/"), QStringLiteral("local.shotx"), method));
-        }
+        // Launching ShotX again from the app menu opens its settings.
+        bus.call(QDBusMessage::createMethodCall(service, QStringLiteral("/"), QStringLiteral("local.shotx"),
+                                                method.isEmpty() ? QStringLiteral("Configure") : method));
         return 0;
     }
 

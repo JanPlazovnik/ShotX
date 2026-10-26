@@ -3,9 +3,11 @@
 #include "overlay.h"
 
 #include <QObject>
+#include <QPointer>
 
 class QAction;
 class QSystemTrayIcon;
+class SettingsDialog;
 
 class App : public QObject
 {
@@ -21,6 +23,7 @@ public Q_SLOTS:
     void Screen();
     void Window();
     void TakeShortcuts();
+    void Configure();
 
 private:
     void startRegion(Action releaseAction);
@@ -30,5 +33,6 @@ private:
 
     QSystemTrayIcon *m_tray;
     QList<QAction *> m_globalActions;
+    QPointer<SettingsDialog> m_settings;
     bool m_selecting = false;
 };

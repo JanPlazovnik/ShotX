@@ -1,0 +1,64 @@
+name: Packages
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+jobs:
+  deb:
+    runs-on: ubuntu-latest
+    container: ubuntu:26.04
+    steps:
+      - name: Install build dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          apt-get update
+          apt-get install -y cmake g++ make dpkg-dev file qt6-base-dev libkf6globalaccel-dev liblayershellqtinterface-dev
+      - uses: actions/checkout@v4
+      - name: Build package
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then version="-DCPACK_PACKAGE_VERSION=${GITHUB_REF_NAME#v}"; fi
+          cmake -S . -B build-pkg -DCMAKE_INSTALL_PREFIX=/usr $version
+          cmake --build build-pkg -j"$(nproc)"
+          cd build-pkg && cpack -G DEB
+      - uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: build-pkg/*.deb
+
+  rpm:
+    runs-on: ubuntu-latest
+    container: fedora:latest
+    steps:
+      - name: Install build dependencies
+        run: dnf install -y cmake gcc-c++ make rpm-build qt6-qtbase-devel kf6-kglobalaccel-devel layer-shell-qt-devel
+      - uses: actions/checkout@v4
+      - name: Build package
+        run: |
+          if [ "$GITHUB_REF_TYPE" = tag ]; then version="-DCPACK_PACKAGE_VERSION=${GITHUB_REF_NAME#v}"; fi
+          cmake -S . -B build-pkg -DCMAKE_INSTALL_PREFIX=/usr $version
+          cmake --build build-pkg -j"$(nproc)"
+          cd build-pkg && cpack -G RPM
+      - uses: actions/upload-artifact@v4
+        with:
+          name: rpm
+          path: build-pkg/*.rpm
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: [deb, rpm]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: packages
+          merge-multiple: true
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" packages/* --repo "$GITHUB_REPOSITORY" --title "ShotX $GITHUB_REF_NAME" --generate-notes

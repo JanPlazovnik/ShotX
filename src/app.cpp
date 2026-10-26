@@ -1,6 +1,7 @@
 #include "app.h"
 #include "capture.h"
 #include "editor.h"
+#include "settings.h"
 
 #include <KGlobalAccel>
 
@@ -11,19 +12,9 @@
 #include <QDesktopServices>
 #include <QDir>
 #include <QMenu>
-#include <QStandardPaths>
 #include <QSystemTrayIcon>
 #include <QThreadPool>
 #include <QUrl>
-
-namespace {
-
-QString screenshotDir()
-{
-    return QStandardPaths::writableLocation(QStandardPaths::PicturesLocation) + QStringLiteral("/Screenshots");
-}
-
-}
 
 App::App(QObject *parent)
     : QObject(parent)
@@ -54,9 +45,11 @@ App::App(QObject *parent)
     }
     menu->addSeparator();
     menu->addAction(QIcon::fromTheme(QStringLiteral("folder-pictures")), QStringLiteral("Open screenshots folder"), this, [] {
-        QDir().mkpath(screenshotDir());
-        QDesktopServices::openUrl(QUrl::fromLocalFile(screenshotDir()));
+        const QString dir = Settings::load().folder;
+        QDir().mkpath(dir);
+        QDesktopServices::openUrl(QUrl::fromLocalFile(dir));
     });
+    menu->addAction(QIcon::fromTheme(QStringLiteral("configure")), QStringLiteral("Configure ShotX…"), this, &App::Configure);
     menu->addAction(QIcon::fromTheme(QStringLiteral("application-exit")), QStringLiteral("Quit"), qApp, &QApplication::quit);
 
     m_tray->setToolTip(QStringLiteral("ShotX"));
@@ -112,6 +105,16 @@ void App::TakeShortcuts()
     }
 }
 
+void App::Configure()
+{
+    if (!m_settings) {
+        m_settings = new SettingsDialog(m_globalActions);
+    }
+    m_settings->show();
+    m_settings->raise();
+    m_settings->activateWindow();
+}
+
 void App::startRegion(Action releaseAction)
 {
     if (m_selecting) {
@@ -134,10 +137,16 @@ void App::startRegion(Action releaseAction)
 void App::handle(const QImage &image, Action action)
 {
     switch (action) {
-    case Action::Default:
-        QApplication::clipboard()->setImage(image);
-        save(image);
+    case Action::Default: {
+        const Settings settings = Settings::load();
+        if (settings.copy) {
+            QApplication::clipboard()->setImage(image);
+        }
+        if (settings.save) {
+            save(image);
+        }
         break;
+    }
     case Action::Copy:
         QApplication::clipboard()->setImage(image);
         break;
@@ -157,15 +166,18 @@ void App::handle(const QImage &image, Action action)
 
 void App::save(const QImage &image)
 {
-    const QString dir = screenshotDir();
-    const QString path = dir + QStringLiteral("/Screenshot_%1.png")
-                                   .arg(QDateTime::currentDateTime().toString(QStringLiteral("yyyy-MM-dd_HH-mm-ss-zzz")));
-    QThreadPool::globalInstance()->start([this, image, dir, path] {
+    const Settings settings = Settings::load();
+    const QString dir = settings.folder;
+    const QString path = settings.filePath(QDateTime::currentDateTime());
+    const bool notifySaved = settings.notify;
+    QThreadPool::globalInstance()->start([this, image, dir, path, notifySaved] {
         QDir().mkpath(dir);
-        const bool ok = image.save(path, "PNG");
-        QMetaObject::invokeMethod(this, [this, ok, path] {
+        const bool ok = image.save(path);
+        QMetaObject::invokeMethod(this, [this, ok, path, notifySaved] {
             if (ok) {
-                notify(QStringLiteral("Screenshot saved"), path);
+                if (notifySaved) {
+                    notify(QStringLiteral("Screenshot saved"), path);
+                }
             } else {
                 notify(QStringLiteral("Could not save screenshot"), path);
             }
