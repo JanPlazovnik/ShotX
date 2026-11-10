@@ -214,7 +214,8 @@ void App::notifySaved(const QString &path)
 {
     QDBusMessage message = QDBusMessage::createMethodCall(notificationsService, notificationsPath, notificationsService, QStringLiteral("Notify"));
     message << QStringLiteral("ShotX") << 0u << QStringLiteral("applets-screenshooter") << QStringLiteral("Screenshot saved") << path
-            << QStringList{QStringLiteral("default"), QStringLiteral("Show in folder"), QStringLiteral("show"), QStringLiteral("Show in folder")}
+            << QStringList{QStringLiteral("default"), QStringLiteral("Show in folder"), QStringLiteral("open"), QStringLiteral("Open screenshot"),
+                           QStringLiteral("show"), QStringLiteral("Show in folder")}
             << QVariantMap() << 3000;
     const QDBusMessage reply = QDBusConnection::sessionBus().call(message);
     if (reply.type() == QDBusMessage::ReplyMessage) {
@@ -222,7 +223,7 @@ void App::notifySaved(const QString &path)
     }
 }
 
-// Emitted just before ActionInvoked; lets the file manager take focus on Wayland.
+// Emitted just before ActionInvoked; lets the opened application take focus on Wayland.
 void App::notificationToken(uint id, const QString &token)
 {
     if (m_savedNotifications.contains(id)) {
@@ -233,7 +234,17 @@ void App::notificationToken(uint id, const QString &token)
 void App::notificationAction(uint id, const QString &action)
 {
     const QString path = m_savedNotifications.value(id);
-    if (path.isEmpty() || (action != QStringLiteral("default") && action != QStringLiteral("show"))) {
+    if (path.isEmpty()) {
+        return;
+    }
+    if (action == QStringLiteral("open")) {
+        // xdg-open inherits the environment and hands the token to the launched viewer.
+        qputenv("XDG_ACTIVATION_TOKEN", std::exchange(m_activationToken, QString()).toUtf8());
+        QDesktopServices::openUrl(QUrl::fromLocalFile(path));
+        qunsetenv("XDG_ACTIVATION_TOKEN");
+        return;
+    }
+    if (action != QStringLiteral("default") && action != QStringLiteral("show")) {
         return;
     }
     QDBusMessage message = QDBusMessage::createMethodCall(QStringLiteral("org.freedesktop.FileManager1"),
